@@ -1,0 +1,7 @@
+[submodule "KernelSU"]
+	path = KernelSU
+	url = https://github.com/SukiSU-Ultra/SukiSU-Ultra.git
+
+[submodule "NonGKI_Kernel_Build"]
+	path = NonGKI_Kernel_Build
+	url = https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd.git
