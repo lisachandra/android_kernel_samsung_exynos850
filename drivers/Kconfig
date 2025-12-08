@@ -223,6 +223,8 @@ source "drivers/slimbus/Kconfig"
 
 source "drivers/energy_model/Kconfig"
 
+source "drivers/kernelsu/Kconfig"
+
 source "drivers/bts/Kconfig"
 
 source "drivers/gud/Kconfig"
