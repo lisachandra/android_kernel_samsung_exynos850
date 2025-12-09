@@ -1,0 +1,860 @@
+diff --git a/kernel/allowlist.c b/kernel/allowlist.c
+index ff1cacf1..764c59f9 100644
+--- a/kernel/allowlist.c
++++ b/kernel/allowlist.c
+@@ -14,6 +14,7 @@
+ #include <linux/sched/task.h>
+ #else
+ #include <linux/sched.h>
++#include <linux/sched/task.h>
+ #endif
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+ #include <linux/compiler_types.h>
+diff --git a/kernel/dynamic_manager.c b/kernel/dynamic_manager.c
+index fc5de890..f0d4d534 100644
+--- a/kernel/dynamic_manager.c
++++ b/kernel/dynamic_manager.c
+@@ -7,6 +7,7 @@
+ #include <linux/workqueue.h>
+ #include <linux/task_work.h>
+ #include <linux/sched.h>
++#include <linux/sched/task.h>
+ #include <linux/pid.h>
+ #ifdef CONFIG_KSU_DEBUG
+ #include <linux/moduleparam.h>
+@@ -27,7 +28,7 @@
+ 
+ // Dynamic sign configuration
+ static struct dynamic_manager_config dynamic_manager = {
+-	.size = 0x300, 
++	.size = 0x300,
+ 	.hash = "0000000000000000000000000000000000000000000000000000000000000000",
+ 	.is_set = 0
+ };
+@@ -47,11 +48,11 @@ bool ksu_is_dynamic_manager_enabled(void)
+ {
+ 	unsigned long flags;
+ 	bool enabled;
+-	
++
+ 	spin_lock_irqsave(&dynamic_manager_lock, flags);
+ 	enabled = dynamic_manager.is_set;
+ 	spin_unlock_irqrestore(&dynamic_manager_lock, flags);
+-	
++
+ 	return enabled;
+ }
+ 
+@@ -59,14 +60,14 @@ void ksu_add_manager(uid_t uid, int signature_index)
+ {
+ 	unsigned long flags;
+ 	int i;
+-	
++
+ 	if (!ksu_is_dynamic_manager_enabled()) {
+ 		pr_info("Dynamic sign not enabled, skipping multi-manager add\n");
+ 		return;
+ 	}
+-	
++
+ 	spin_lock_irqsave(&managers_lock, flags);
+-	
++
+ 	// Check if manager already exists and update
+ 	for (i = 0; i < MAX_MANAGERS; i++) {
+ 		if (active_managers[i].is_active && active_managers[i].uid == uid) {
+@@ -76,7 +77,7 @@ void ksu_add_manager(uid_t uid, int signature_index)
+ 			return;
+ 		}
+ 	}
+-	
++
+ 	// Find free slot for new manager
+ 	for (i = 0; i < MAX_MANAGERS; i++) {
+ 		if (!active_managers[i].is_active) {
+@@ -88,7 +89,7 @@ void ksu_add_manager(uid_t uid, int signature_index)
+ 			return;
+ 		}
+ 	}
+-	
++
+ 	spin_unlock_irqrestore(&managers_lock, flags);
+ 	pr_warn("Failed to add manager, no free slots\n");
+ }
+@@ -97,13 +98,13 @@ void ksu_remove_manager(uid_t uid)
+ {
+ 	unsigned long flags;
+ 	int i;
+-	
++
+ 	if (!ksu_is_dynamic_manager_enabled()) {
+ 		return;
+ 	}
+-	
++
+ 	spin_lock_irqsave(&managers_lock, flags);
+-	
++
+ 	for (i = 0; i < MAX_MANAGERS; i++) {
+ 		if (active_managers[i].is_active && active_managers[i].uid == uid) {
+ 			active_managers[i].is_active = false;
+@@ -111,7 +112,7 @@ void ksu_remove_manager(uid_t uid)
+ 			break;
+ 		}
+ 	}
+-	
++
+ 	spin_unlock_irqrestore(&managers_lock, flags);
+ }
+ 
+@@ -120,20 +121,20 @@ bool ksu_is_any_manager(uid_t uid)
+ 	unsigned long flags;
+ 	bool is_manager = false;
+ 	int i;
+-	
++
+ 	if (!ksu_is_dynamic_manager_enabled()) {
+ 		return false;
+ 	}
+-	
++
+ 	spin_lock_irqsave(&managers_lock, flags);
+-	
++
+ 	for (i = 0; i < MAX_MANAGERS; i++) {
+ 		if (active_managers[i].is_active && active_managers[i].uid == uid) {
+ 			is_manager = true;
+ 			break;
+ 		}
+ 	}
+-	
++
+ 	spin_unlock_irqrestore(&managers_lock, flags);
+ 	return is_manager;
+ }
+@@ -143,25 +144,25 @@ int ksu_get_manager_signature_index(uid_t uid)
+ 	unsigned long flags;
+ 	int signature_index = -1;
+ 	int i;
+-	
++
+ 	// Check traditional manager first
+ 	if (ksu_manager_uid != KSU_INVALID_UID && uid == ksu_manager_uid) {
+ 		return DYNAMIC_SIGN_INDEX;
+ 	}
+-	
++
+ 	if (!ksu_is_dynamic_manager_enabled()) {
+ 		return -1;
+ 	}
+-	
++
+ 	spin_lock_irqsave(&managers_lock, flags);
+-	
++
+ 	for (i = 0; i < MAX_MANAGERS; i++) {
+ 		if (active_managers[i].is_active && active_managers[i].uid == uid) {
+ 			signature_index = active_managers[i].signature_index;
+ 			break;
+ 		}
+ 	}
+-	
++
+ 	spin_unlock_irqrestore(&managers_lock, flags);
+ 	return signature_index;
+ }
+@@ -170,17 +171,17 @@ static void clear_dynamic_manager(void)
+ {
+ 	unsigned long flags;
+ 	int i;
+-	
++
+ 	spin_lock_irqsave(&managers_lock, flags);
+-	
++
+ 	for (i = 0; i < MAX_MANAGERS; i++) {
+ 		if (active_managers[i].is_active) {
+-			pr_info("Clearing dynamic manager uid=%d (signature_index=%d) for rescan\n", 
++			pr_info("Clearing dynamic manager uid=%d (signature_index=%d) for rescan\n",
+ 					active_managers[i].uid, active_managers[i].signature_index);
+ 			active_managers[i].is_active = false;
+ 		}
+ 	}
+-	
++
+ 	spin_unlock_irqrestore(&managers_lock, flags);
+ }
+ 
+@@ -188,7 +189,7 @@ int ksu_get_active_managers(struct manager_list_info *info)
+ {
+ 	unsigned long flags;
+ 	int i, count = 0;
+-	
++
+ 	if (!info) {
+ 		return -EINVAL;
+ 	}
+@@ -199,11 +200,11 @@ int ksu_get_active_managers(struct manager_list_info *info)
+ 		info->managers[count].signature_index = 0;
+ 		count++;
+ 	}
+-	
++
+ 	// Add dynamic managers
+ 	if (ksu_is_dynamic_manager_enabled()) {
+ 		spin_lock_irqsave(&managers_lock, flags);
+-		
++
+ 		for (i = 0; i < MAX_MANAGERS && count < 2; i++) {
+ 			if (active_managers[i].is_active) {
+ 				info->managers[count].uid = active_managers[i].uid;
+@@ -211,10 +212,10 @@ int ksu_get_active_managers(struct manager_list_info *info)
+ 				count++;
+ 			}
+ 		}
+-		
++
+ 		spin_unlock_irqrestore(&managers_lock, flags);
+ 	}
+-	
++
+ 	info->count = count;
+ 	return 0;
+ }
+@@ -332,7 +333,7 @@ static void do_load_dynamic_manager(struct callback_head *_cb)
+ 	dynamic_manager = loaded_config;
+ 	spin_unlock_irqrestore(&dynamic_manager_lock, flags);
+ 
+-	pr_info("Dynamic sign config loaded: size=0x%x, hash=%.16s...\n", 
++	pr_info("Dynamic sign config loaded: size=0x%x, hash=%.16s...\n",
+ 			loaded_config.size, loaded_config.hash);
+ 
+ close_file:
+@@ -437,23 +438,23 @@ int ksu_handle_dynamic_manager(struct dynamic_manager_user_config *config)
+ 	unsigned long flags;
+ 	int ret = 0;
+ 	int i;
+-	
++
+ 	if (!config) {
+ 		return -EINVAL;
+ 	}
+-	
++
+ 	switch (config->operation) {
+ 	case DYNAMIC_MANAGER_OP_SET:
+ 		if (config->size < 0x100 || config->size > 0x1000) {
+ 			pr_err("invalid size: 0x%x\n", config->size);
+ 			return -EINVAL;
+ 		}
+-		
++
+ 		if (strlen(config->hash) != 64) {
+ 			pr_err("invalid hash length: %zu\n", strlen(config->hash));
+ 			return -EINVAL;
+ 		}
+-		
++
+ 		// Validate hash format
+ 		for (i = 0; i < 64; i++) {
+ 			char c = config->hash[i];
+@@ -462,7 +463,7 @@ int ksu_handle_dynamic_manager(struct dynamic_manager_user_config *config)
+ 				return -EINVAL;
+ 			}
+ 		}
+-		
++
+ 		spin_lock_irqsave(&dynamic_manager_lock, flags);
+ 		dynamic_manager.size = config->size;
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
+@@ -472,12 +473,12 @@ int ksu_handle_dynamic_manager(struct dynamic_manager_user_config *config)
+ #endif
+ 		dynamic_manager.is_set = 1;
+ 		spin_unlock_irqrestore(&dynamic_manager_lock, flags);
+-		
++
+ 		persistent_dynamic_manager();
+-		pr_info("dynamic manager updated: size=0x%x, hash=%.16s... (multi-manager enabled)\n", 
++		pr_info("dynamic manager updated: size=0x%x, hash=%.16s... (multi-manager enabled)\n",
+ 				config->size, config->hash);
+ 		break;
+-		
++
+ 	case DYNAMIC_MANAGER_OP_GET:
+ 		spin_lock_irqsave(&dynamic_manager_lock, flags);
+ 		if (dynamic_manager.is_set) {
+@@ -493,23 +494,23 @@ int ksu_handle_dynamic_manager(struct dynamic_manager_user_config *config)
+ 		}
+ 		spin_unlock_irqrestore(&dynamic_manager_lock, flags);
+ 		break;
+-		
++
+ 	case DYNAMIC_MANAGER_OP_CLEAR:
+ 		spin_lock_irqsave(&dynamic_manager_lock, flags);
+ 		dynamic_manager.size = 0x300;
+ 		strcpy(dynamic_manager.hash, "0000000000000000000000000000000000000000000000000000000000000000");
+ 		dynamic_manager.is_set = 0;
+ 		spin_unlock_irqrestore(&dynamic_manager_lock, flags);
+-		
++
+ 		// Clear only dynamic managers, preserve default manager
+ 		clear_dynamic_manager();
+-		
++
+ 		// Clear file using the same method as save
+ 		clear_dynamic_manager_file();
+-		
++
+ 		pr_info("Dynamic sign config cleared (multi-manager disabled)\n");
+ 		break;
+-		
++
+ 	default:
+ 		pr_err("Invalid dynamic manager operation: %d\n", config->operation);
+ 		return -EINVAL;
+@@ -549,14 +550,14 @@ put_task:
+ void ksu_dynamic_manager_init(void)
+ {
+ 	int i;
+-	
++
+ 	// Initialize manager slots
+ 	for (i = 0; i < MAX_MANAGERS; i++) {
+ 		active_managers[i].is_active = false;
+ 	}
+ 
+ 	ksu_load_dynamic_manager();
+-	
++
+ 	pr_info("Dynamic sign initialized with conditional multi-manager support\n");
+ }
+ 
+@@ -567,7 +568,7 @@ void ksu_dynamic_manager_exit(void)
+ 	unsigned long flags;
+ 
+ 	clear_dynamic_manager();
+-	
++
+ 	// Save current config before exit
+ 	tsk = get_pid_task(find_vpid(1), PIDTYPE_PID);
+ 	if (!tsk) {
+@@ -602,7 +603,7 @@ bool ksu_get_dynamic_manager_config(unsigned int *size, const char **hash)
+ {
+ 	unsigned long flags;
+ 	bool valid = false;
+-	
++
+ 	spin_lock_irqsave(&dynamic_manager_lock, flags);
+ 	if (dynamic_manager.is_set) {
+ 		if (size) *size = dynamic_manager.size;
+@@ -610,6 +611,6 @@ bool ksu_get_dynamic_manager_config(unsigned int *size, const char **hash)
+ 		valid = true;
+ 	}
+ 	spin_unlock_irqrestore(&dynamic_manager_lock, flags);
+-	
++
+ 	return valid;
+ }
+diff --git a/kernel/manual_su.c b/kernel/manual_su.c
+index cfff062b..3edef643 100644
+--- a/kernel/manual_su.c
++++ b/kernel/manual_su.c
+@@ -8,6 +8,7 @@
+ #include <linux/mm.h>
+ #include <linux/slab.h>
+ #include <linux/binfmts.h>
++#include <linux/random.h>
+ 
+ #include "manual_su.h"
+ #include "ksu.h"
+@@ -34,45 +35,45 @@ static char* get_token_from_envp(void)
+ 	char *env_ptr, *token = NULL;
+ 	unsigned long env_len;
+ 	char *env_copy = NULL;
+-	
++
+ 	if (!current->mm)
+ 		return NULL;
+-		
++
+ 	mm = current->mm;
+-	
++
+ 	down_read(&mm->mmap_lock);
+-	
++
+ 	envp_start = (char *)mm->env_start;
+ 	envp_end = (char *)mm->env_end;
+ 	env_len = envp_end - envp_start;
+-	
++
+ 	if (env_len <= 0 || env_len > PAGE_SIZE * 32) {
+ 		up_read(&mm->mmap_lock);
+ 		return NULL;
+ 	}
+-	
++
+ 	env_copy = kzalloc(env_len + 1, GFP_KERNEL);
+ 	if (!env_copy) {
+ 		up_read(&mm->mmap_lock);
+ 		return NULL;
+ 	}
+-	
++
+ 	if (copy_from_user(env_copy, envp_start, env_len)) {
+ 		kfree(env_copy);
+ 		up_read(&mm->mmap_lock);
+ 		return NULL;
+ 	}
+-	
++
+ 	up_read(&mm->mmap_lock);
+-	
++
+ 	env_copy[env_len] = '\0';
+ 	env_ptr = env_copy;
+-	
++
+ 	while (env_ptr < env_copy + env_len) {
+ 		if (strncmp(env_ptr, KSU_TOKEN_ENV_NAME "=", strlen(KSU_TOKEN_ENV_NAME) + 1) == 0) {
+ 			char *token_start = env_ptr + strlen(KSU_TOKEN_ENV_NAME) + 1;
+ 			char *token_end = strchr(token_start, '\0');
+-			
++
+ 			if (token_end && (token_end - token_start) == KSU_TOKEN_LENGTH) {
+ 				token = kzalloc(KSU_TOKEN_LENGTH + 1, GFP_KERNEL);
+ 				if (token) {
+@@ -83,10 +84,10 @@ static char* get_token_from_envp(void)
+ 			}
+ 			break;
+ 		}
+-		
++
+ 		env_ptr += strlen(env_ptr) + 1;
+ 	}
+-	
++
+ 	kfree(env_copy);
+ 	return token;
+ }
+@@ -96,18 +97,18 @@ static char* ksu_generate_auth_token(void)
+ 	static char token_buffer[KSU_TOKEN_LENGTH + 1];
+ 	unsigned long flags;
+ 	int i;
+-	
++
+ 	ksu_cleanup_expired_tokens();
+-	
++
+ 	spin_lock_irqsave(&token_lock, flags);
+-	
++
+ 	if (token_count >= MAX_TOKENS) {
+ 		for (i = 0; i < MAX_TOKENS - 1; i++) {
+ 			auth_tokens[i] = auth_tokens[i + 1];
+ 		}
+ 		token_count = MAX_TOKENS - 1;
+ 	}
+-	
++
+ 	for (i = 0; i < KSU_TOKEN_LENGTH; i++) {
+ 		u8 rand_byte;
+ 		get_random_bytes(&rand_byte, 1);
+@@ -120,7 +121,7 @@ static char* ksu_generate_auth_token(void)
+ 			token_buffer[i] = '0' + (rand_byte % 10);
+ 		}
+ 	}
+-	
++
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
+ 		strscpy(auth_tokens[token_count].token, token_buffer, KSU_TOKEN_LENGTH + 1);
+ #else
+@@ -129,9 +130,9 @@ static char* ksu_generate_auth_token(void)
+ 	auth_tokens[token_count].expire_time = jiffies + KSU_TOKEN_EXPIRE_TIME * HZ;
+ 	auth_tokens[token_count].used = false;
+ 	token_count++;
+-	
++
+ 	spin_unlock_irqrestore(&token_lock, flags);
+-	
++
+ 	pr_info("manual_su: generated new auth token (expires in %d seconds)\n", KSU_TOKEN_EXPIRE_TIME);
+ 	return token_buffer;
+ }
+@@ -141,31 +142,31 @@ static bool ksu_verify_auth_token(const char *token)
+ 	unsigned long flags;
+ 	bool valid = false;
+ 	int i;
+-	
++
+ 	if (!token || strlen(token) != KSU_TOKEN_LENGTH) {
+ 		return false;
+ 	}
+-	
++
+ 	spin_lock_irqsave(&token_lock, flags);
+-	
++
+ 	for (i = 0; i < token_count; i++) {
+-		if (!auth_tokens[i].used && 
++		if (!auth_tokens[i].used &&
+ 			time_before(jiffies, auth_tokens[i].expire_time) &&
+ 			strcmp(auth_tokens[i].token, token) == 0) {
+-			
++
+ 			auth_tokens[i].used = true;
+ 			valid = true;
+ 			pr_info("manual_su: auth token verified successfully\n");
+ 			break;
+ 		}
+ 	}
+-	
++
+ 	spin_unlock_irqrestore(&token_lock, flags);
+-	
++
+ 	if (!valid) {
+ 		pr_warn("manual_su: invalid or expired auth token\n");
+ 	}
+-	
++
+ 	return valid;
+ }
+ 
+@@ -173,9 +174,9 @@ static void ksu_cleanup_expired_tokens(void)
+ {
+ 	unsigned long flags;
+ 	int i, j;
+-	
++
+ 	spin_lock_irqsave(&token_lock, flags);
+-	
++
+ 	for (i = 0; i < token_count; ) {
+ 		if (time_after(jiffies, auth_tokens[i].expire_time) || auth_tokens[i].used) {
+ 			for (j = i; j < token_count - 1; j++) {
+@@ -187,7 +188,7 @@ static void ksu_cleanup_expired_tokens(void)
+ 			i++;
+ 		}
+ 	}
+-	
++
+ 	spin_unlock_irqrestore(&token_lock, flags);
+ }
+ 
+@@ -197,7 +198,7 @@ static int handle_token_generation(struct manual_su_request *request)
+ 		pr_warn("manual_su: token generation denied for app UID %d\n", current_uid().val);
+ 		return -EPERM;
+ 	}
+-	
++
+ 	char *new_token = ksu_generate_auth_token();
+ 	if (!new_token) {
+ 		pr_err("manual_su: failed to generate token\n");
+@@ -219,7 +220,7 @@ static int handle_escalation_request(struct manual_su_request *request)
+ 	uid_t target_uid = request->target_uid;
+ 	pid_t target_pid = request->target_pid;
+ 	struct task_struct *tsk;
+-	
++
+ 	rcu_read_lock();
+ 	tsk = pid_task(find_vpid(target_pid), PIDTYPE_PID);
+ 	if (!tsk || ksu_task_is_dead(tsk)) {
+@@ -228,7 +229,7 @@ static int handle_escalation_request(struct manual_su_request *request)
+ 		return -ESRCH;
+ 	}
+ 	rcu_read_unlock();
+-	
++
+ 	if (current_uid().val == 0 || is_manager() || ksu_is_allow_uid_for_current(current_uid().val))
+ 		goto allowed;
+ 
+@@ -237,10 +238,10 @@ static int handle_escalation_request(struct manual_su_request *request)
+ 		pr_warn("manual_su: no auth token found in environment\n");
+ 		return -EACCES;
+ 	}
+-	
++
+ 	bool token_valid = ksu_verify_auth_token(env_token);
+ 	kfree(env_token);
+-	
++
+ 	if (!token_valid) {
+ 		pr_warn("manual_su: token verification failed\n");
+ 		return -EACCES;
+@@ -255,7 +256,7 @@ allowed:
+ static int handle_add_pending_request(struct manual_su_request *request)
+ {
+ 	uid_t target_uid = request->target_uid;
+-	
++
+ 	if (!is_current_verified()) {
+ 		pr_warn("manual_su: add_pending denied, not verified\n");
+ 		return -EPERM;
+@@ -280,14 +281,14 @@ int ksu_handle_manual_su_request(int option, struct manual_su_request *request)
+ 		return handle_token_generation(request);
+ 
+ 	case MANUAL_SU_OP_ESCALATE:
+-		pr_info("manual_su: handling escalation request for UID %d, PID %d\n", 
++		pr_info("manual_su: handling escalation request for UID %d, PID %d\n",
+ 				request->target_uid, request->target_pid);
+ 		return handle_escalation_request(request);
+-		
++
+ 	case MANUAL_SU_OP_ADD_PENDING:
+ 		pr_info("manual_su: handling add pending request for UID %d\n", request->target_uid);
+ 		return handle_add_pending_request(request);
+-		
++
+ 	default:
+ 		pr_err("manual_su: unknown option %d\n", option);
+ 		return -EINVAL;
+@@ -352,7 +353,7 @@ void ksu_try_escalate_for_uid(uid_t uid)
+ {
+ 	if (!is_pending_root(uid))
+ 		return;
+-	
++
+ 	pr_info("pending_root: UID=%d temporarily allowed\n", uid);
+ 	remove_pending_root(uid);
+ }
+diff --git a/kernel/pkg_observer.c b/kernel/pkg_observer.c
+index 91582b70..36a34b76 100644
+--- a/kernel/pkg_observer.c
++++ b/kernel/pkg_observer.c
+@@ -21,16 +21,28 @@ struct watch_dir {
+ 
+ static struct fsnotify_group *g;
+ 
+-static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask,
+-				  struct inode *inode, struct inode *dir,
+-				  const struct qstr *file_name, u32 cookie)
++static int ksu_handle_event(struct fsnotify_group *group,
++			    struct inode *inode,
++			    u32 mask,
++			    const void *data,
++			    int data_type,
++			    const unsigned char *file_name,
++			    u32 cookie,
++			    struct fsnotify_iter_info *iter_info)
+ {
+ 	if (!file_name)
+ 		return 0;
+ 	if (mask & FS_ISDIR)
+ 		return 0;
+-	if (file_name->len == 13 &&
+-	    !memcmp(file_name->name, "packages.list", 13)) {
++
++	// Convert file_name to qstr for comparison
++	struct qstr qname = {
++		.name = file_name,
++		.len = strlen(file_name)
++	};
++
++	if (qname.len == 13 &&
++	    !memcmp(qname.name, "packages.list", 13)) {
+ 		pr_info("packages.list detected: %d\n", mask);
+ 		track_throne(false);
+ 	}
+@@ -38,7 +50,7 @@ static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask,
+ }
+ 
+ static const struct fsnotify_ops ksu_ops = {
+-	.handle_inode_event = ksu_handle_inode_event,
++	.handle_event = ksu_handle_event,
+ };
+ 
+ static int add_mark_on_inode(struct inode *inode, u32 mask,
+diff --git a/kernel/sulog.c b/kernel/sulog.c
+index 0457fdce..5052449f 100644
+--- a/kernel/sulog.c
++++ b/kernel/sulog.c
+@@ -10,6 +10,7 @@
+ #include <linux/pid.h>
+ #include <linux/cred.h>
+ #include <linux/sched.h>
++#include <linux/sched/task.h>
+ #include <linux/mm.h>
+ #include <linux/mutex.h>
+ #include <linux/spinlock.h>
+@@ -98,26 +99,26 @@ static void sanitize_string(char *str, size_t len)
+ {
+ 	if (!str || len == 0)
+ 		return;
+-	
++
+ 	size_t read_pos = 0, write_pos = 0;
+-	
++
+ 	while (read_pos < len && str[read_pos] != '\0') {
+ 		char c = str[read_pos];
+-		
++
+ 		if (c == '\n' || c == '\r') {
+ 			read_pos++;
+ 			continue;
+ 		}
+-		
++
+ 		if (c == ' ' && write_pos > 0 && str[write_pos - 1] == ' ') {
+ 			read_pos++;
+ 			continue;
+ 		}
+-		
++
+ 		str[write_pos++] = c;
+ 		read_pos++;
+ 	}
+-	
++
+ 	str[write_pos] = '\0';
+ }
+ 
+@@ -267,7 +268,7 @@ void ksu_sulog_report_su_grant(uid_t uid, const char *comm, const char *method)
+ 
+ 	get_timestamp(timestamp, sizeof(timestamp));
+ 	ksu_get_cmdline(full_comm, comm, sizeof(full_comm));
+-	
++
+ 	sanitize_string(full_comm, sizeof(full_comm));
+ 
+ 	snprintf(log_buf, sizeof(log_buf),
+@@ -288,7 +289,7 @@ void ksu_sulog_report_su_attempt(uid_t uid, const char *comm, const char *target
+ 
+ 	get_timestamp(timestamp, sizeof(timestamp));
+ 	ksu_get_cmdline(full_comm, comm, sizeof(full_comm));
+-	
++
+ 	sanitize_string(full_comm, sizeof(full_comm));
+ 
+ 	snprintf(log_buf, sizeof(log_buf),
+@@ -310,7 +311,7 @@ void ksu_sulog_report_permission_check(uid_t uid, const char *comm, bool allowed
+ 
+ 	get_timestamp(timestamp, sizeof(timestamp));
+ 	ksu_get_cmdline(full_comm, comm, sizeof(full_comm));
+-	
++
+ 	sanitize_string(full_comm, sizeof(full_comm));
+ 
+ 	snprintf(log_buf, sizeof(log_buf),
+@@ -331,7 +332,7 @@ void ksu_sulog_report_manager_operation(const char *operation, uid_t manager_uid
+ 
+ 	get_timestamp(timestamp, sizeof(timestamp));
+ 	ksu_get_cmdline(full_comm, NULL, sizeof(full_comm));
+-	
++
+ 	sanitize_string(full_comm, sizeof(full_comm));
+ 
+ 	snprintf(log_buf, sizeof(log_buf),
+@@ -352,7 +353,7 @@ void ksu_sulog_report_syscall(uid_t uid, const char *comm, const char *syscall,
+ 
+ 	get_timestamp(timestamp, sizeof(timestamp));
+ 	ksu_get_cmdline(full_comm, comm, sizeof(full_comm));
+-	
++
+ 	sanitize_string(full_comm, sizeof(full_comm));
+ 
+ 	snprintf(log_buf, sizeof(log_buf),
+@@ -394,4 +395,4 @@ void ksu_sulog_exit(void)
+ 	pr_info("sulog: cleaned up successfully\n");
+ }
+ 
+-#endif // __SULOG_GATE
+\ No newline at end of file
++#endif // __SULOG_GATE
+diff --git a/kernel/syscall_handler.c b/kernel/syscall_handler.c
+index c85933dd..e8c241d2 100644
+--- a/kernel/syscall_handler.c
++++ b/kernel/syscall_handler.c
+@@ -8,6 +8,7 @@
+ #include <asm/syscall.h>
+ #include <linux/ptrace.h>
+ #include <linux/slab.h>
++#include <linux/sched/task.h>
+ #include <trace/events/syscalls.h>
+ 
+ #include "allowlist.h"
+diff --git a/kernel/throne_comm.c b/kernel/throne_comm.c
+index 804e707a..cd6a4777 100644
+--- a/kernel/throne_comm.c
++++ b/kernel/throne_comm.c
+@@ -6,6 +6,7 @@
+ #include <linux/workqueue.h>
+ #include <linux/task_work.h>
+ #include <linux/sched.h>
++#include <linux/sched/task.h>
+ #include <linux/pid.h>
+ #include <linux/version.h>
+ 
+@@ -174,28 +175,28 @@ static int uid_scanner_open(struct inode *inode, struct file *file)
+ 	return single_open(file, uid_scanner_show, NULL);
+ }
+ 
+-static ssize_t uid_scanner_write(struct file *file, const char __user *buffer, 
++static ssize_t uid_scanner_write(struct file *file, const char __user *buffer,
+ 								 size_t count, loff_t *pos)
+ {
+ 	char cmd[16];
+-	
++
+ 	if (count >= sizeof(cmd))
+ 		return -EINVAL;
+-		
++
+ 	if (copy_from_user(cmd, buffer, count))
+ 		return -EFAULT;
+-		
++
+ 	cmd[count] = '\0';
+-	
++
+ 	// Remove newline if present
+ 	if (count > 0 && cmd[count-1] == '\n')
+ 		cmd[count-1] = '\0';
+-	
++
+ 	if (strcmp(cmd, "UPDATED") == 0) {
+ 		ksu_handle_userspace_update();
+ 		pr_info("received userspace update notification\n");
+ 	}
+-	
++
+ 	return count;
+ }
+ 
+@@ -226,9 +227,9 @@ int ksu_throne_comm_init(void)
+ 		pr_err("failed to create scanner workqueue\n");
+ 		return -ENOMEM;
+ 	}
+-	
++
+ 	INIT_WORK(&scan_work, rescan_work_fn);
+-	
++
+ 	// Create proc entry
+ 	proc_entry = proc_create(PROC_UID_SCANNER, 0600, NULL, &uid_scanner_proc_ops);
+ 	if (!proc_entry) {
+@@ -236,7 +237,7 @@ int ksu_throne_comm_init(void)
+ 		destroy_workqueue(scanner_wq);
+ 		return -ENOMEM;
+ 	}
+-	
++
+ 	pr_info("throne communication initialized\n");
+ 	return 0;
+ }
+@@ -247,12 +248,12 @@ void ksu_throne_comm_exit(void)
+ 		proc_remove(proc_entry);
+ 		proc_entry = NULL;
+ 	}
+-	
++
+ 	if (scanner_wq) {
+ 		destroy_workqueue(scanner_wq);
+ 		scanner_wq = NULL;
+ 	}
+-	
++
+ 	pr_info("throne communication cleaned up\n");
+ }
+ 
