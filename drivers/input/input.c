@@ -28,6 +28,9 @@
 #include <linux/mutex.h>
 #include <linux/rcupdate.h>
 #include "input-compat.h"
+#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
+#include <../../drivers/kernelsu/ksu_trace.h>
+#endif
 
 /* [ System Performance - Input Booster */
 #include <linux/input/input_booster.h>
@@ -873,6 +876,9 @@ void input_event(struct input_dev *dev,
 	int idx = 0;
 	/* System Performance - Input Booster ] */
 
+#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
+	trace_ksu_trace_input_hook(&type, &code, &value);
+#endif
 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
 
 		spin_lock_irqsave(&dev->event_lock, flags);

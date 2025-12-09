@@ -24,6 +24,9 @@
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
+#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
+#include <../drivers/kernelsu/ksu_trace.h>
+#endif
 
 #ifdef CONFIG_SECURITY_DEFEX
 #include <linux/defex.h>
@@ -604,6 +607,9 @@ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
 #ifdef CONFIG_KSU
 	if (unlikely(ksu_vfs_read_hook))
 		ksu_handle_sys_read(fd, &buf, &count);
+#endif
+#if defined(CONFIG_KSU) && defined(CONFIG_KSU_TRACEPOINT_HOOK)
+	trace_ksu_trace_sys_read_hook(fd, &buf, &count);
 #endif
 	return ksys_read(fd, buf, count);
 }
