@@ -171,54 +171,6 @@ bool susfs_is_avc_log_spoofing_enabled = false;
 #endif
 
 /**
- * avc_dump_query - Display a SID pair and a class in human-readable form.
- * @ssid: source security identifier
- * @tsid: target security identifier
- * @tclass: target security class
- */
-static void avc_dump_query(struct audit_buffer *ab, struct selinux_state *state,
-			   u32 ssid, u32 tsid, u16 tclass)
-{
-	int rc;
-	char *scontext;
-	u32 scontext_len;
-#ifdef CONFIG_KSU_SUSFS
-	struct selinux_audit_data sad;
-#endif
-
-	rc = security_sid_to_context(state, ssid, &scontext, &scontext_len);
-#ifdef CONFIG_KSU_SUSFS
-	if (unlikely(sad.tsid == susfs_ksu_sid && susfs_is_avc_log_spoofing_enabled)) {
-		if (rc)
-			audit_log_format(ab, " tsid=%d", susfs_priv_app_sid);
-		else
-			audit_log_format(ab, " tcontext=%s", "u:r:priv_app:s0:c512,c768");
-		goto bypass_orig_flow;
-	}
-#endif
-	if (rc)
-		audit_log_format(ab, "ssid=%d", ssid);
-	else {
-		audit_log_format(ab, "scontext=%s", scontext);
-		kfree(scontext);
-	}
-
-#ifdef CONFIG_KSU_SUSFS
-bypass_orig_flow:
-#endif
-	rc = security_sid_to_context(state, tsid, &scontext, &scontext_len);
-	if (rc)
-		audit_log_format(ab, " tsid=%d", tsid);
-	else {
-		audit_log_format(ab, " tcontext=%s", scontext);
-		kfree(scontext);
-	}
-
-	BUG_ON(!tclass || tclass >= ARRAY_SIZE(secclass_map));
-	audit_log_format(ab, " tclass=%s", secclass_map[tclass-1].name);
-}
-
-/**
  * avc_init - Initialize the AVC.
  *
  * Initialize the access vector cache.
@@ -769,14 +721,69 @@ static void avc_audit_pre_callback(struct audit_buffer *ab, void *a)
 static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 {
 	struct common_audit_data *ad = a;
-	audit_log_format(ab, " ");
-	avc_dump_query(ab, ad->selinux_audit_data->state,
-		       ad->selinux_audit_data->ssid,
-		       ad->selinux_audit_data->tsid,
-		       ad->selinux_audit_data->tclass);
-	if (ad->selinux_audit_data->denied) {
-		audit_log_format(ab, " permissive=%u",
-				 ad->selinux_audit_data->result ? 0 : 1);
+	struct selinux_audit_data *sad = ad->selinux_audit_data;
+	char *scontext = NULL;
+	char *tcontext = NULL;
+	const char *tclass = NULL;
+	u32 scontext_len;
+	u32 tcontext_len;
+	int rc;
+
+	rc = security_sid_to_context(sad->state, sad->ssid, &scontext,
+				     &scontext_len);
+	if (rc)
+		audit_log_format(ab, " ssid=%d", sad->ssid);
+	else
+		audit_log_format(ab, " scontext=%s", scontext);
+
+	rc = security_sid_to_context(sad->state, sad->tsid, &tcontext,
+				     &tcontext_len);
+#ifdef CONFIG_KSU_SUSFS
+	if (unlikely(sad->tsid == susfs_ksu_sid && susfs_is_avc_log_spoofing_enabled)) {
+		if (rc)
+			audit_log_format(ab, " tsid=%d", susfs_priv_app_sid);
+		else
+			audit_log_format(ab, " tcontext=%s", "u:r:priv_app:s0:c512,c768");
+		goto bypass_orig_flow;
+	}
+#endif
+	if (rc)
+		audit_log_format(ab, " tsid=%d", sad->tsid);
+	else
+		audit_log_format(ab, " tcontext=%s", tcontext);
+
+#ifdef CONFIG_KSU_SUSFS
+bypass_orig_flow:
+#endif
+	BUG_ON(!sad->tclass || sad->tclass >= ARRAY_SIZE(secclass_map));
+	tclass = secclass_map[sad->tclass-1].name;
+	audit_log_format(ab, " tclass=%s", tclass);
+
+	if (sad->denied)
+		audit_log_format(ab, " permissive=%u", sad->result ? 0 : 1);
+
+	kfree(tcontext);
+	kfree(scontext);
+
+	/* in case of invalid context report also the actual context string */
+	rc = security_sid_to_context_inval(sad->state, sad->ssid, &scontext,
+					   &scontext_len);
+	if (!rc && scontext) {
+		if (scontext_len && scontext[scontext_len - 1] == '\0')
+			scontext_len--;
+		audit_log_format(ab, " srawcon=");
+		audit_log_n_untrustedstring(ab, scontext, scontext_len);
+		kfree(scontext);
+	}
+
+	rc = security_sid_to_context_inval(sad->state, sad->tsid, &scontext,
+					   &scontext_len);
+	if (!rc && scontext) {
+		if (scontext_len && scontext[scontext_len - 1] == '\0')
+			scontext_len--;
+		audit_log_format(ab, " trawcon=");
+		audit_log_n_untrustedstring(ab, scontext, scontext_len);
+		kfree(scontext);
 	}
 }
 
